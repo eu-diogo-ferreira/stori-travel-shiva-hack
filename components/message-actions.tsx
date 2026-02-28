@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 
 import { UseChatHelpers } from '@ai-sdk/react'
-import { Copy, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Copy, Loader2, ThumbsDown, ThumbsUp, Volume2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { SearchResultItem } from '@/lib/types'
@@ -27,6 +27,8 @@ interface MessageActionsProps {
   status?: UseChatHelpers<UIMessage<unknown, UIDataTypes, UITools>>['status']
   visible?: boolean
   citationMaps?: Record<string, Record<number, SearchResultItem>>
+  audioUrl?: string
+  audioStatus?: 'idle' | 'loading' | 'error'
 }
 
 export function MessageActions({
@@ -40,7 +42,9 @@ export function MessageActions({
   className,
   status,
   visible = true,
-  citationMaps
+  citationMaps,
+  audioUrl,
+  audioStatus = 'idle'
 }: MessageActionsProps) {
   const [feedbackScore, setFeedbackScore] = useState<number | null>(
     initialFeedbackScore ?? null
@@ -61,6 +65,17 @@ export function MessageActions({
   async function handleCopy() {
     await navigator.clipboard.writeText(mappedMessage)
     toast.success('Message copied to clipboard')
+  }
+
+  async function handlePlayAudio() {
+    if (!audioUrl) return
+    try {
+      const audio = new Audio(audioUrl)
+      await audio.play()
+    } catch (error) {
+      console.error('Error playing assistant audio:', error)
+      toast.error('Failed to play audio')
+    }
   }
 
   async function handleFeedback(score: number) {
@@ -115,6 +130,26 @@ export function MessageActions({
       >
         <Copy size={14} />
       </Button>
+      {(audioStatus === 'loading' || audioUrl) && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          onClick={handlePlayAudio}
+          disabled={!audioUrl || audioStatus === 'loading'}
+          title={
+            audioStatus === 'loading'
+              ? 'Generating audio...'
+              : 'Play assistant audio'
+          }
+        >
+          {audioStatus === 'loading' ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Volume2 size={14} />
+          )}
+        </Button>
+      )}
       {traceId && (
         <>
           {(feedbackScore === null || feedbackScore === 1) && (

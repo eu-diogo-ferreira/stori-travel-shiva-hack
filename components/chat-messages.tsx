@@ -32,6 +32,11 @@ interface ChatMessagesProps {
   onUpdateMessage?: (messageId: string, newContent: string) => Promise<void>
   reload?: (messageId: string) => Promise<void | string | null | undefined>
   error?: Error | string | null | undefined
+  assistantAudioByMessageId?: Record<string, string>
+  assistantAudioStatusByMessageId?: Record<
+    string,
+    'idle' | 'loading' | 'error'
+  >
 }
 
 export function ChatMessages({
@@ -44,7 +49,9 @@ export function ChatMessages({
   scrollContainerRef,
   onUpdateMessage,
   reload,
-  error
+  error,
+  assistantAudioByMessageId = {},
+  assistantAudioStatusByMessageId = {}
 }: ChatMessagesProps) {
   // Track user-modified states (when user explicitly opens/closes)
   const [userModifiedStates, setUserModifiedStates] = useState<
@@ -199,6 +206,8 @@ export function ChatMessages({
                 onUpdateMessage={onUpdateMessage}
                 reload={reload}
                 citationMaps={allCitationMaps}
+                assistantAudioByMessageId={assistantAudioByMessageId}
+                assistantAudioStatusByMessageId={assistantAudioStatusByMessageId}
               />
             </div>
 
@@ -227,6 +236,10 @@ export function ChatMessages({
                     reload={reload}
                     isLatestMessage={isLatestMessage}
                     citationMaps={allCitationMaps}
+                    assistantAudioByMessageId={assistantAudioByMessageId}
+                    assistantAudioStatusByMessageId={
+                      assistantAudioStatusByMessageId
+                    }
                   />
                 </div>
               )

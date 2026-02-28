@@ -30,6 +30,8 @@ export type AnswerSectionProps = {
   ) => Promise<void | string | null | undefined>
   citationMaps?: Record<string, Record<number, SearchResultItem>>
   isGuest?: boolean
+  assistantAudioUrl?: string
+  assistantAudioStatus?: 'idle' | 'loading' | 'error'
 }
 
 export function AnswerSection({
@@ -43,7 +45,9 @@ export function AnswerSection({
   status,
   reload,
   citationMaps,
-  isGuest = false
+  isGuest = false,
+  assistantAudioUrl,
+  assistantAudioStatus = 'idle'
 }: AnswerSectionProps) {
   const enableShare =
     process.env.NEXT_PUBLIC_SUPABASE_URL !== undefined && !isGuest
@@ -78,6 +82,8 @@ export function AnswerSection({
             status={status}
             visible={showActions}
             citationMaps={citationMaps}
+            audioUrl={assistantAudioUrl}
+            audioStatus={assistantAudioStatus}
           />
         </div>
       )}

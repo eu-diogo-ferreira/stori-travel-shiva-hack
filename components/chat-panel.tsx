@@ -5,7 +5,14 @@ import Textarea from 'react-textarea-autosize'
 import { useRouter } from 'next/navigation'
 
 import { UseChatHelpers } from '@ai-sdk/react'
-import { ArrowUp, ChevronDown, MessageCirclePlus, Square } from 'lucide-react'
+import {
+  ArrowUp,
+  ChevronDown,
+  Loader2,
+  MessageCirclePlus,
+  Mic,
+  Square
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { UploadedFile } from '@/lib/types'
@@ -23,6 +30,10 @@ import { UploadedFileList } from './uploaded-file-list'
 
 // Constants for timing delays
 const INPUT_UPDATE_DELAY_MS = 10 // Delay to ensure input value is updated before form submission
+const MAX_AUDIO_DURATION_MS = 2 * 60 * 1000
+const RECORDING_TIMER_TICK_MS = 250
+
+type MicState = 'idle' | 'recording' | 'processing'
 
 interface ChatPanelProps {
   chatId: string
@@ -45,6 +56,12 @@ interface ChatPanelProps {
   onNewChat?: () => void
   /** Whether the current session is guest */
   isGuest?: boolean
+  /** Called after successful speech-to-text transcription */
+  onAudioTranscription?: (payload: {
+    text: string
+    durationMs?: number
+    mimeType?: string
+  }) => void | Promise<void>
 }
 
 export function ChatPanel({
@@ -63,7 +80,8 @@ export function ChatPanel({
   setUploadedFiles,
   scrollContainerRef,
   onNewChat,
-  isGuest = false
+  isGuest = false,
+  onAudioTranscription
 }: ChatPanelProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -71,7 +89,14 @@ export function ChatPanel({
   const [isComposing, setIsComposing] = useState(false) // Composition state
   const [enterDisabled, setEnterDisabled] = useState(false) // Disable Enter after composition ends
   const [isInputFocused, setIsInputFocused] = useState(false) // Track input focus
+  const [micState, setMicState] = useState<MicState>('idle')
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0)
   const { close: closeArtifact } = useArtifact()
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingStartRef = useRef<number | null>(null)
+  const recordingStopTimeoutRef = useRef<number | null>(null)
+  const recordingTimerRef = useRef<number | null>(null)
   const isLoading = status === 'submitted' || status === 'streaming'
 
   const handleCompositionStart = () => setIsComposing(true)
@@ -141,6 +166,167 @@ export function ChatPanel({
       })
     }
   }
+
+  const resetRecordingTimers = useCallback(() => {
+    if (recordingStopTimeoutRef.current !== null) {
+      window.clearTimeout(recordingStopTimeoutRef.current)
+      recordingStopTimeoutRef.current = null
+    }
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+  }, [])
+
+  const stopRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder) return
+    if (recorder.state === 'recording') {
+      recorder.stop()
+    }
+  }, [])
+
+  const transcribeAudioBlob = useCallback(
+    async (audioBlob: Blob, durationMs?: number) => {
+      const formData = new FormData()
+      const extension = audioBlob.type.includes('wav') ? 'wav' : 'webm'
+      const file = new File([audioBlob], `recording.${extension}`, {
+        type: audioBlob.type || 'audio/webm'
+      })
+      formData.append('file', file)
+      if (durationMs !== undefined) {
+        formData.append('durationMs', String(durationMs))
+      }
+
+      const response = await fetch('/api/audio/transcribe', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        const payload = await response
+          .json()
+          .catch(() => ({ error: 'Transcription failed' }))
+        throw new Error(payload?.error || 'Transcription failed')
+      }
+
+      const payload = await response.json()
+      const transcriptText = String(payload?.text || '').trim()
+      if (!transcriptText) {
+        throw new Error('Could not transcribe audio')
+      }
+
+      await onAudioTranscription?.({
+        text: transcriptText,
+        durationMs,
+        mimeType: audioBlob.type || file.type
+      })
+    },
+    [onAudioTranscription]
+  )
+
+  const startRecording = useCallback(async () => {
+    if (micState !== 'idle') return
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof MediaRecorder === 'undefined'
+    ) {
+      toast.error('Audio recording is not supported in this browser')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const preferredMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/wav'
+      ]
+      const supportedMimeType = preferredMimeTypes.find(type =>
+        MediaRecorder.isTypeSupported(type)
+      )
+      const recorder = supportedMimeType
+        ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+        : new MediaRecorder(stream)
+
+      audioChunksRef.current = []
+      recordingStartRef.current = Date.now()
+      setRecordingElapsedMs(0)
+      setMicState('recording')
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = async () => {
+        resetRecordingTimers()
+        const startedAt = recordingStartRef.current
+        const durationMs = startedAt ? Date.now() - startedAt : undefined
+        const chunks = [...audioChunksRef.current]
+        audioChunksRef.current = []
+        recordingStartRef.current = null
+
+        for (const track of stream.getTracks()) {
+          track.stop()
+        }
+
+        if (chunks.length === 0) {
+          setMicState('idle')
+          return
+        }
+
+        const audioBlob = new Blob(chunks, {
+          type: recorder.mimeType || 'audio/webm'
+        })
+
+        setMicState('processing')
+        try {
+          await transcribeAudioBlob(audioBlob, durationMs)
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Failed to transcribe audio'
+          toast.error(message)
+        } finally {
+          setMicState('idle')
+          setRecordingElapsedMs(0)
+        }
+      }
+
+      recorder.start(200)
+      recordingStopTimeoutRef.current = window.setTimeout(() => {
+        stopRecording()
+      }, MAX_AUDIO_DURATION_MS)
+      recordingTimerRef.current = window.setInterval(() => {
+        const startedAt = recordingStartRef.current
+        if (!startedAt) return
+        setRecordingElapsedMs(Date.now() - startedAt)
+      }, RECORDING_TIMER_TICK_MS)
+    } catch (error) {
+      console.error('Audio recording error:', error)
+      toast.error('Could not access microphone')
+      setMicState('idle')
+      resetRecordingTimers()
+    }
+  }, [micState, resetRecordingTimers, stopRecording, transcribeAudioBlob])
+
+  useEffect(
+    () => () => {
+      resetRecordingTimers()
+      const recorder = mediaRecorderRef.current
+      if (recorder && recorder.state === 'recording') {
+        recorder.stop()
+      }
+    },
+    [resetRecordingTimers]
+  )
+
+  const isRecording = micState === 'recording'
+  const isProcessingAudio = micState === 'processing'
+  const recordingSeconds = Math.ceil(recordingElapsedMs / 1000)
 
   return (
     <div
@@ -280,6 +466,30 @@ export function ChatPanel({
                   }}
                 />
               )}
+              <Button
+                type="button"
+                variant={isRecording ? 'default' : 'outline'}
+                size="icon"
+                className={cn(
+                  'shrink-0 rounded-full',
+                  isRecording && 'animate-pulse'
+                )}
+                title={
+                  isRecording
+                    ? `Stop recording (${recordingSeconds}s)`
+                    : isProcessingAudio
+                      ? 'Transcribing audio...'
+                      : 'Record audio'
+                }
+                disabled={isLoading || isProcessingAudio}
+                onClick={isRecording ? stopRecording : startRecording}
+              >
+                {isProcessingAudio ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Mic className="size-4" />
+                )}
+              </Button>
               <SearchModeSelector />
             </div>
             <div className="flex items-center gap-2">

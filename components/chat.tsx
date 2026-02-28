@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { useChat } from '@ai-sdk/react'
@@ -31,6 +31,20 @@ interface ChatSection {
   assistantMessages: UIMessage[]
 }
 
+const MAX_TTS_TEXT_LENGTH = 12000
+
+function extractAssistantText(message: UIMessage): string {
+  return (
+    message.parts
+      ?.filter(
+        part => part.type === 'text' && typeof (part as any).text === 'string'
+      )
+      .map(part => (part as { type: 'text'; text: string }).text)
+      .join('\n')
+      .trim() || ''
+  )
+}
+
 export function Chat({
   id: providedId,
   savedMessages = [],
@@ -56,6 +70,12 @@ export function Chat({
     // Clear other chat-related state that persists due to Next.js 16 component caching
     setInput('')
     setUploadedFiles([])
+    setAssistantAudioByMessageId(previous => {
+      Object.values(previous).forEach(url => URL.revokeObjectURL(url))
+      return {}
+    })
+    setAssistantAudioStatusByMessageId({})
+    inFlightTtsByMessageRef.current.clear()
     setErrorModal({
       open: false,
       type: 'general',
@@ -67,6 +87,14 @@ export function Chat({
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [input, setInput] = useState('')
+  const [assistantAudioByMessageId, setAssistantAudioByMessageId] = useState<
+    Record<string, string>
+  >({})
+  const [
+    assistantAudioStatusByMessageId,
+    setAssistantAudioStatusByMessageId
+  ] = useState<Record<string, 'idle' | 'loading' | 'error'>>({})
+  const inFlightTtsByMessageRef = useRef<Set<string>>(new Set())
   const [errorModal, setErrorModal] = useState<{
     open: boolean
     type: 'rate-limit' | 'auth' | 'forbidden' | 'general'
@@ -386,6 +414,111 @@ export function Chat({
     }
   }
 
+  const handleAudioTranscription = useCallback(
+    async (payload: { text: string; durationMs?: number; mimeType?: string }) => {
+      const transcriptText = payload.text.trim()
+      if (!transcriptText) return
+
+      sendMessage({
+        role: 'user',
+        parts: [{ type: 'text', text: transcriptText }],
+        metadata: {
+          inputMode: 'audio',
+          audioDurationMs: payload.durationMs,
+          audioMimeType: payload.mimeType
+        }
+      } as any)
+
+      if (!isGuest && window.location.pathname === '/') {
+        window.history.pushState({}, '', `/search/${chatId}`)
+      }
+    },
+    [chatId, isGuest, sendMessage]
+  )
+
+  const generateAssistantAudio = useCallback(
+    async (message: UIMessage) => {
+      const messageId = message.id
+      const text = extractAssistantText(message).slice(0, MAX_TTS_TEXT_LENGTH)
+      if (!messageId || !text) return
+
+      if (assistantAudioByMessageId[messageId]) return
+      if (inFlightTtsByMessageRef.current.has(messageId)) return
+
+      inFlightTtsByMessageRef.current.add(messageId)
+      setAssistantAudioStatusByMessageId(prev => ({
+        ...prev,
+        [messageId]: 'loading'
+      }))
+
+      try {
+        const response = await fetch('/api/audio/tts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text,
+            voice: 'alloy',
+            format: 'mp3'
+          })
+        })
+
+        if (!response.ok) {
+          const payload = await response
+            .json()
+            .catch(() => ({ error: 'Failed to generate assistant audio' }))
+          throw new Error(payload?.error || 'Failed to generate assistant audio')
+        }
+
+        const audioBlob = await response.blob()
+        const audioUrl = URL.createObjectURL(audioBlob)
+        setAssistantAudioByMessageId(prev => {
+          const existingUrl = prev[messageId]
+          if (existingUrl) {
+            URL.revokeObjectURL(existingUrl)
+          }
+          return {
+            ...prev,
+            [messageId]: audioUrl
+          }
+        })
+        setAssistantAudioStatusByMessageId(prev => ({
+          ...prev,
+          [messageId]: 'idle'
+        }))
+      } catch (error) {
+        console.error('Assistant TTS generation failed:', error)
+        setAssistantAudioStatusByMessageId(prev => ({
+          ...prev,
+          [messageId]: 'error'
+        }))
+      } finally {
+        inFlightTtsByMessageRef.current.delete(messageId)
+      }
+    },
+    [assistantAudioByMessageId]
+  )
+
+  useEffect(() => {
+    if (status === 'submitted' || status === 'streaming') return
+
+    const latestAssistantMessage = [...messages]
+      .reverse()
+      .find(message => message.role === 'assistant')
+    if (!latestAssistantMessage) return
+
+    void generateAssistantAudio(latestAssistantMessage)
+  }, [generateAssistantAudio, messages, status])
+
+  useEffect(() => {
+    return () => {
+      Object.values(assistantAudioByMessageId).forEach(url =>
+        URL.revokeObjectURL(url)
+      )
+    }
+  }, [assistantAudioByMessageId])
+
   const { isDragging, handleDragOver, handleDragLeave, handleDrop } =
     useFileDropzone({
       uploadedFiles,
@@ -465,6 +598,8 @@ export function Chat({
         onUpdateMessage={handleUpdateAndReloadMessage}
         reload={handleReloadFrom}
         error={error}
+        assistantAudioByMessageId={assistantAudioByMessageId}
+        assistantAudioStatusByMessageId={assistantAudioStatusByMessageId}
       />
       <ChatPanel
         chatId={chatId}
@@ -485,6 +620,7 @@ export function Chat({
         scrollContainerRef={scrollContainerRef}
         onNewChat={handleNewChat}
         isGuest={isGuest}
+        onAudioTranscription={handleAudioTranscription}
       />
       <DragOverlay visible={dragHandlers.isDragging} />
       <ErrorModal

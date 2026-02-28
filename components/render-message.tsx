@@ -29,6 +29,11 @@ interface RenderMessageProps {
   reload?: (messageId: string) => Promise<void | string | null | undefined>
   isLatestMessage?: boolean
   citationMaps?: Record<string, Record<number, SearchResultItem>>
+  assistantAudioByMessageId?: Record<string, string>
+  assistantAudioStatusByMessageId?: Record<
+    string,
+    'idle' | 'loading' | 'error'
+  >
 }
 
 export function RenderMessage({
@@ -44,7 +49,9 @@ export function RenderMessage({
   onUpdateMessage,
   reload,
   isLatestMessage = false,
-  citationMaps = {}
+  citationMaps = {},
+  assistantAudioByMessageId = {},
+  assistantAudioStatusByMessageId = {}
 }: RenderMessageProps) {
   // Use provided citation maps (from all messages)
   if (message.role === 'user') {
@@ -154,6 +161,8 @@ export function RenderMessage({
           reload={reload}
           status={status}
           citationMaps={citationMaps}
+          assistantAudioUrl={assistantAudioByMessageId[messageId]}
+          assistantAudioStatus={assistantAudioStatusByMessageId[messageId]}
         />
       )
     } else if (
