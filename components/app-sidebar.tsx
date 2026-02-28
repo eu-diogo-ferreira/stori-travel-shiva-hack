@@ -1,5 +1,6 @@
-import { Suspense } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
+import { Suspense } from 'react'
 
 import { Plus } from 'lucide-react'
 
@@ -18,15 +19,21 @@ import {
 
 import { ChatHistorySection } from './sidebar/chat-history-section'
 import { ChatHistorySkeleton } from './sidebar/chat-history-skeleton'
-import { IconLogo } from './ui/icons'
 
 export default function AppSidebar({ hasUser = false }: { hasUser?: boolean }) {
   return (
     <Sidebar side="left" variant="sidebar" collapsible="offcanvas">
       <SidebarHeader className="flex flex-row justify-between items-center">
         <Link href="/" className="flex items-center gap-2 px-2 py-3">
-          <IconLogo className={cn('size-5')} />
-          <span className="font-semibold text-sm">Morphic</span>
+          <Image
+            src="/images/stori-logo-transparent.png"
+            alt="Stori Travel"
+            width={20}
+            height={20}
+            className={cn('size-5 object-contain')}
+            priority
+          />
+          <span className="font-semibold text-sm">Stori Travel</span>
         </Link>
         <SidebarTrigger />
       </SidebarHeader>

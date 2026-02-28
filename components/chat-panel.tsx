@@ -1,8 +1,9 @@
 'use client'
 
+import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Textarea from 'react-textarea-autosize'
-import { useRouter } from 'next/navigation'
 
 import { UseChatHelpers } from '@ai-sdk/react'
 import {
@@ -19,13 +20,12 @@ import { UploadedFile } from '@/lib/types'
 import type { UIDataTypes, UIMessage, UITools } from '@/lib/types/ai'
 import { cn } from '@/lib/utils'
 
-import { useArtifact } from './artifact/artifact-context'
-import { Button } from './ui/button'
-import { IconBlinkingLogo } from './ui/icons'
 import { ActionButtons } from './action-buttons'
+import { useArtifact } from './artifact/artifact-context'
 import { FileUploadButton } from './file-upload-button'
 import { ModelTypeSelector } from './model-type-selector'
 import { SearchModeSelector } from './search-mode-selector'
+import { Button } from './ui/button'
 import { UploadedFileList } from './uploaded-file-list'
 
 // Constants for timing delays
@@ -336,11 +336,19 @@ export function ChatPanel({
       )}
     >
       {messages.length === 0 && (
-        <div className="mb-10 flex flex-col items-center gap-4">
-          <IconBlinkingLogo className="size-12" />
-          <h1 className="text-2xl font-medium text-foreground">
-            What would you like to know?
-          </h1>
+        <div className="mb-10 flex flex-col items-center gap-3 text-center">
+          <Image
+            src="/images/stori-logo-transparent.png"
+            alt="Stori Travel"
+            width={88}
+            height={88}
+            priority
+            className="h-20 w-20 object-contain"
+          />
+          {/* <h1 className="text-2xl font-semibold text-foreground">Stori Travel</h1> */}
+          <p className="max-w-lg text-sm text-muted-foreground">
+            Seu concierge inteligente para planejar viagens inesqueciveis.
+          </p>
         </div>
       )}
       {uploadedFiles.length > 0 && (
@@ -373,7 +381,7 @@ export function ChatPanel({
           className={cn(
             'relative flex flex-col w-full gap-2 bg-muted rounded-3xl border border-input transition-shadow',
             isInputFocused &&
-              'ring-1 ring-ring/20 ring-offset-1 ring-offset-background/50'
+            'ring-1 ring-ring/20 ring-offset-1 ring-offset-background/50'
           )}
         >
           <Textarea
@@ -444,12 +452,12 @@ export function ChatPanel({
                             prev.map(f =>
                               f.file === uf.file
                                 ? {
-                                    ...f,
-                                    status: 'uploaded',
-                                    url: uploaded.url,
-                                    name: uploaded.filename,
-                                    key: uploaded.key
-                                  }
+                                  ...f,
+                                  status: 'uploaded',
+                                  url: uploaded.url,
+                                  name: uploaded.filename,
+                                  key: uploaded.key
+                                }
                                 : f
                             )
                           )

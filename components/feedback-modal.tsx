@@ -67,7 +67,8 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
         <DialogHeader>
           <DialogTitle>Give feedback</DialogTitle>
           <DialogDescription>
-            Your feedback helps us improve Morphic. Let us know what you think!
+            Seu feedback ajuda a melhorar a Stori Travel. Conte para a gente o
+            que achou!
           </DialogDescription>
         </DialogHeader>
 

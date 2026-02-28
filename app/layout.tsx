@@ -21,23 +21,64 @@ const fontSans = FontSans({
   variable: '--font-sans'
 })
 
-const title = 'Morphic'
+const title = 'Stori Travel | Planeje sua viagem com IA'
 const description =
-  'A fully open-source AI-powered answer engine with a generative UI.'
+  'Descubra destinos, crie roteiros personalizados e planeje sua viagem com a inteligencia artificial da Stori Travel.'
+const keywords = [
+  'Stori Travel',
+  'planejamento de viagens',
+  'roteiro de viagem',
+  'concierge digital',
+  'inteligencia artificial',
+  'travel planner'
+]
+
+function resolveMetadataBase() {
+  const url =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    'https://stori-travel-shiva-hack.vercel.app/'
+  try {
+    return new URL(url)
+  } catch {
+    return new URL('https://stori-travel-shiva-hack.vercel.app/')
+  }
+}
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://morphic.sh'),
+  metadataBase: resolveMetadataBase(),
   title,
   description,
+  keywords,
+  authors: [{ name: 'Stori Travel' }],
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/images/stori-logo-transparent.png', type: 'image/png' },
+      { url: '/favicon.ico' }
+    ],
+    shortcut: ['/images/stori-logo-transparent.png'],
+    apple: [{ url: '/images/stori-logo-transparent.png' }]
+  },
   openGraph: {
     title,
-    description
+    description,
+    type: 'website',
+    url: '/',
+    siteName: 'Stori Travel',
+    images: [
+      {
+        url: '/og.png',
+        width: 1200,
+        height: 630,
+        alt: 'Stori Travel'
+      }
+    ]
   },
   twitter: {
     title,
     description,
     card: 'summary_large_image',
-    creator: '@miiura'
+    images: ['/og.png']
   }
 }
 
@@ -66,7 +107,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={cn(
           'min-h-screen flex flex-col font-sans antialiased overflow-hidden',
